@@ -1,72 +1,209 @@
 # OMR Vision API
 
-A robust Optical Mark Recognition (OMR) system built with **Java (Spring Boot, JavaCV, Tesseract OCR)** for robust automatic exam grading. This pipeline works flawlessly with both clean scanner images and photos taken by smartphones (coping well with shadows and skewed perspectives).
+An **Optical Mark Recognition (OMR)** system for automatic exam grading, built with **Java + Spring Boot + JavaCV (OpenCV) + Tesseract OCR**. Works reliably on both flat scans and smartphone photos with shadows and perspective skew.
 
-## Features
-- **Perspective Alignment:** Uses OpenCV `findContours` and `warpPerspective` to locate document corners and normalize any tilted or skewed images to a 1000x1400 canvas.
-- **Adaptive Thresholding:** Handles uneven lighting and shadows using Gaussian Adaptive Thresholding.
-- **Intensity Mapping:** Automatically filters out "empty/hollow" circles using OpenCV `meanIntensity` region calculations, reliably extracting only filled answers.
-- **Handwriting OCR:** Uses `Tess4j` (Tesseract) to extract handwritten student names and class data.
-- **Automatic Grading:** Compares extracted OMR bubbles to a master answer key uploaded via CSV and calculates student percentage/score.
+---
 
-## Tech Stack
-- **Java 25**
-- **Spring Boot 3.4.x**
-- **JavaCV (OpenCV)** (`org.bytedeco:javacpp-presets`)
-- **Tess4j (Tesseract OCR)**
-- **OpenCSV**
-- **Lombok**
+## Prerequisites
 
-## Getting Started
+| Dependency | Version |
+|---|---|
+| JDK | 25+ |
+| Tesseract OCR | 5.x (native install on OS) |
 
-### Prerequisites
-- **Java Development Kit (JDK) 25** or higher.
-- **Tesseract OCR Engine** and language files natively installed on the host OS. 
-  - Ensure you download `vie.traineddata` (or `eng.traineddata`) and place it inside `tessdata/` root directory to activate the text extraction logic without errors.
-
-### Build and Test
+**Install Tesseract on Ubuntu/Debian:**
 ```bash
-./mvnw clean compile test
+sudo apt install tesseract-ocr tesseract-ocr-vie
 ```
-The test suite validates multiple types of OMR documents (both flat scans and skewed phone photos) checking for 100% extraction accuracy on real-world edge cases.
 
-### Run Locally
+**Copy language files into `tessdata/`:**
+```bash
+mkdir -p tessdata
+cp /usr/share/tesseract-ocr/5/tessdata/vie.traineddata tessdata/
+cp /usr/share/tesseract-ocr/5/tessdata/eng.traineddata tessdata/
+```
+
+---
+
+## Run the Server
+
 ```bash
 ./mvnw spring-boot:run
 ```
 
-## API Endpoint
-The service currently exposes the following grading endpoint:
+Server starts at `http://localhost:8080`.
 
-```http
-POST /api/v1/grade
-Content-Type: multipart/form-data
+---
+
+## Run Tests
+
+```bash
+./mvnw test
 ```
-**Form Data Parameters:**
-- `image`: The image file (JPEG/PNG) of the student's answer sheet.
-- `answers`: The CSV file containing the Answer Key. Format: `QuestionNumber, CorrectAnswer`.
 
-**Response JSON Example:**
+The test suite processes all **5 real answer sheets** in `data/` (both flat scans and phone photos) and asserts 100% extraction accuracy per question. Debug overlay images are written to `data/debug/` after each run.
+
+---
+
+## API Usage
+
+**Endpoint:** `POST /api/v1/grade`  
+**Content-Type:** `multipart/form-data`
+
+| Field | Description |
+|---|---|
+| `image` | Answer sheet image (JPEG/PNG) |
+| `answers` | CSV file containing the answer key |
+
+**Answer key CSV format:**
+```csv
+questionNumber,correctAnswer
+1,B
+2,B
+3,C
+...
+40,B
+```
+
+**Example — grade `data/test_1.jpeg` with curl:**
+```bash
+cat > /tmp/answers.csv << 'EOF'
+questionNumber,correctAnswer
+1,B
+2,B
+3,C
+4,D
+5,A
+6,B
+7,B
+8,C
+9,D
+10,D
+11,D
+12,A
+13,A
+14,A
+15,C
+16,B
+17,D
+18,A
+19,C
+20,C
+21,B
+22,B
+23,D
+24,D
+25,B
+26,A
+27,D
+28,C
+29,C
+30,A
+31,B
+32,D
+33,C
+34,C
+35,A
+36,B
+37,C
+38,D
+39,C
+40,B
+EOF
+
+curl -s -X POST http://localhost:8080/api/v1/grade \
+  -F "image=@data/test_1.jpeg" \
+  -F "answers=@/tmp/answers.csv" | python3 -m json.tool
+```
+
+**Response:**
 ```json
 {
-  "studentName": "Nguyen Van A",
-  "className": "10A1",
-  "score": 8.5,
-  "correctCount": 34,
+  "studentName": "BA",
+  "className": "",
+  "score": 10.0,
+  "correctCount": 40,
   "totalQuestions": 40,
-  "incorrectQuestions": [3, 7, 12, 19, 21, 35],
+  "incorrectQuestions": [],
   "studentAnswers": {
-    "1": "A",
-    "2": "B"
+    "1": "B", "2": "B", "3": "C", "4": "D", "5": "A",
+    "6": "B", "7": "B", "8": "C", "9": "D", "10": "D",
+    "11": "D", "12": "A", "13": "A", "14": "A", "15": "C",
+    "16": "B", "17": "D", "18": "A", "19": "C", "20": "C",
+    "21": "B", "22": "B", "23": "D", "24": "D", "25": "B",
+    "26": "A", "27": "D", "28": "C", "29": "C", "30": "A",
+    "31": "B", "32": "D", "33": "C", "34": "C", "35": "A",
+    "36": "B", "37": "C", "38": "D", "39": "C", "40": "B"
   }
 }
 ```
 
-## How It Works
-1. **Endpoint `ProcessController`** receives the image and keys.
-2. **`ImageProcessingService`** uses JavaCV to identify corner markers, warp the image flat, compute adaptive thresholds, extract the bounding boxes of filled bubbles, and map coordinates to the A, B, C, D choices.
-3. **`TesseractOcrServiceImpl`** extracts the handwriting strings for the name.
-4. **`GradingService`** cross-checks the OCR payload against the Answer Key CSV and calculates the score.
+---
+
+## Test Images (`data/`)
+
+Five real answer sheets used by the test suite:
+
+| File | Description |
+|---|---|
+| `test_1.jpeg` | Smartphone photo — tilted, shadow on background |
+| `test_2.jpeg` | Flat scan — varied answer pattern |
+| `test_3.jpeg` | Smartphone photo — low light, all answers marked A |
+| `test_4.jpeg` | Smartphone photo — includes a double-marked bubble (AC) |
+| `test_5.jpeg` | Smartphone photo — same pattern as test_4 |
+
+### `test_1.jpeg` — smartphone photo, tilted angle
+![test_1](data/test_1.jpeg)
+
+### `test_2.jpeg` — flat scan
+![test_2](data/test_2.jpeg)
+
+### `test_3.jpeg` — smartphone photo, low light, all A
+![test_3](data/test_3.jpeg)
+
+---
+
+## Debug Output (`data/debug/`)
+
+After running the tests, a grid visualization is saved for each image. Each bubble cell is outlined and the detected filled bubble is highlighted in green.
+
+### `debug_grid_test_1.jpeg` — detected answers from a tilted phone photo
+![debug_1](data/debug/debug_grid_test_1.jpeg_1776242594175.jpeg)
+
+### `debug_grid_test_3.jpeg` — all bubbles detected as A
+![debug_3](data/debug/debug_grid_test_3.jpeg_1776242594349.jpeg)
+
+---
+
+## Processing Pipeline
+
+```
+Input image
+    │
+    ▼
+[alignImage]       findContours → warpPerspective → 1000×1400 canvas
+    │
+    ▼
+[Adaptive Threshold]   Gaussian adaptive thresholding, handles shadows
+    │
+    ▼
+[extractAnswers]   meanIntensity per cell → filter filled vs hollow bubbles
+    │
+    ▼
+[TesseractOCR]     extract student name and class from handwriting region
+    │
+    ▼
+[GradingService]   compare against answer key CSV → return JSON result
+```
+
+## Tech Stack
+
+- **Java 25** / **Spring Boot 4.0.x**
+- **JavaCV 1.5.10** (OpenCV bindings)
+- **Tess4j 5.11.0** (Tesseract OCR)
+- **OpenCSV 5.9**
+- **Lombok**
 
 ## License
-MIT License
+
+MIT

@@ -16,10 +16,3 @@ logs/
 
 # Mac
 .DS_Store
-
-# Ignore diagnostic output images, keep sample input images
-data/debug/
-data/debug_*
-data/aligned_*
-data/out_*
-data/thresh_*
